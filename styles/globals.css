@@ -1,26 +1,40 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* Base: tipografías, inputs y tablas más compactos */
+@layer base {
+  body {
+    @apply text-gray-900 bg-gray-50/60;
+  }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  input, select, textarea {
+    @apply text-sm px-3 py-2 rounded-md border border-gray-300
+           focus:outline-none focus:ring-2 focus:ring-brand-400;
+  }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  table {
+    @apply text-[13px];
+  }
+  th {
+    @apply text-gray-500 font-medium;
+  }
+  th, td {
+    @apply py-2 pr-3 align-middle;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Utilidad para contenedor centrado y estrecho (si lo quieres usar) */
+@layer components {
+  .container-admin {
+    @apply max-w-[1200px] mx-auto px-4 sm:px-6;
+  }
+
+  /* Badges con brand (si los usas) */
+  .badge {
+    @apply inline-flex items-center rounded-full border px-2 py-0.5 text-xs;
+  }
+  .badge-brand {
+    @apply border-brand-200 text-brand-700 bg-brand-50;
+  }
 }
