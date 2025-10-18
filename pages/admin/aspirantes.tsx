@@ -4,9 +4,7 @@ import Button from "../../components/Button";
 import { supabase } from "../../lib/supabase";
 import { useEffect, useState } from "react";
 import Badge from "../../components/Badge";
-import Progress from "../../components/Progress";
 import { estadoColor } from "../../lib/ui";
-
 
 type Aspirante = {
   id: number;
@@ -21,10 +19,20 @@ type Aspirante = {
   cv_url: string | null;
 };
 
+type AspiranteForm = {
+  nombre: string;
+  documento: string;
+  telefono: string;
+  edad: string | number;
+  experiencia: string;
+  ingresos: string | number;
+  estado: string;
+};
+
 const ESTADOS = ["Pendiente", "En revisión", "Aprobado", "Rechazado"];
 
 export default function Aspirantes() {
-  const empty = {
+  const empty: AspiranteForm = {
     nombre: "",
     documento: "",
     telefono: "",
@@ -34,14 +42,10 @@ export default function Aspirantes() {
     estado: "Pendiente",
   };
 
-  const [form, setForm] = useState<any>(empty);
+  const [form, setForm] = useState<AspiranteForm>(empty);
   const [list, setList] = useState<Aspirante[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
-
-  // modo edición
-  const [editId, setEditId] = useState<number | null>(null);
-  const [editCvUrl, setEditCvUrl] = useState<string | null>(null);
 
   // búsqueda y filtro
   const [q, setQ] = useState("");
@@ -88,8 +92,7 @@ export default function Aspirantes() {
 
     setSaving(true);
     try {
-      // si se sube un nuevo archivo, lo usamos; si no, conservamos el existente (en edición)
-      let cv_url: string | null = editId ? editCvUrl : null;
+      let cv_url: string | null = null;
       if (file) cv_url = await uploadPDF();
 
       const payload = {
@@ -103,47 +106,18 @@ export default function Aspirantes() {
         cv_url,
       };
 
-      if (editId) {
-        const { error } = await supabase.from("aspirantes").update(payload).eq("id", editId);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("aspirantes").insert(payload);
-        if (error) throw error;
-      }
+      const { error } = await supabase.from("aspirantes").insert(payload);
+      if (error) throw error;
 
       setForm(empty);
       setFile(null);
-      setEditId(null);
-      setEditCvUrl(null);
       await load();
-    } catch (err: any) {
-      alert("No se pudo guardar: " + (err.message || err));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      alert("No se pudo guardar: " + msg);
     } finally {
       setSaving(false);
     }
-  };
-
-  const startEdit = (a: Aspirante) => {
-    setEditId(a.id);
-    setEditCvUrl(a.cv_url || null);
-    setForm({
-      nombre: a.nombre || "",
-      documento: a.documento || "",
-      telefono: a.telefono || "",
-      edad: a.edad ?? "",
-      experiencia: a.experiencia || "",
-      ingresos: a.ingresos ?? "",
-      estado: a.estado || "Pendiente",
-    });
-    setFile(null); // limpiar input de archivo
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const cancelEdit = () => {
-    setEditId(null);
-    setEditCvUrl(null);
-    setForm(empty);
-    setFile(null);
   };
 
   const remove = async (id: number) => {
@@ -157,7 +131,6 @@ export default function Aspirantes() {
   };
 
   const updateEstado = async (id: number, nuevo: string) => {
-    // optimista (refleja cambio de inmediato)
     const prevList = list;
     setList((p) => p.map((a) => (a.id === id ? { ...a, estado: nuevo } : a)));
 
@@ -181,9 +154,9 @@ export default function Aspirantes() {
 
   return (
     <LayoutAdmin title="Aspirantes">
-<div className="grid lg:grid-cols-2 gap-4 max-w-[1200px]">
+      <div className="grid lg:grid-cols-2 gap-6">
         {/* FORM */}
-        <Card title={editId ? "Editar aspirante" : "Nuevo aspirante"}>
+        <Card title="Nuevo aspirante">
           <form onSubmit={save} className="grid sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
               <label className="text-sm text-gray-600">Nombre completo</label>
@@ -266,35 +239,12 @@ export default function Aspirantes() {
                 className="w-full border rounded-md px-3 py-2"
                 onChange={(e) => setFile(e.target.files?.[0] || null)}
               />
-              {editId && editCvUrl && (
-                <div className="text-xs mt-1">
-                  Archivo actual:{" "}
-                  <a
-                    className="text-brand-700 hover:underline"
-                    href={editCvUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Ver PDF
-                  </a>{" "}
-                  (si subes uno nuevo, lo reemplazará)
-                </div>
-              )}
             </div>
 
-            <div className="sm:col-span-2 flex items-center gap-2">
+            <div className="sm:col-span-2">
               <Button type="submit" disabled={saving}>
-                {saving ? "Guardando..." : editId ? "Guardar cambios" : "Registrar"}
+                {saving ? "Guardando..." : "Registrar"}
               </Button>
-              {editId && (
-                <button
-                  type="button"
-                  onClick={cancelEdit}
-                  className="px-3 py-2 border rounded-md bg-white hover:bg-gray-50 text-sm"
-                >
-                  Cancelar edición
-                </button>
-              )}
             </div>
           </form>
         </Card>
@@ -302,97 +252,98 @@ export default function Aspirantes() {
         {/* LISTA */}
         <Card title="Aspirantes registrados">
           {/* Controles de búsqueda y filtro */}
-<div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-gray-50/60 p-3">
-  <input
-    placeholder="Buscar por nombre, documento o teléfono…"
-    className="w-full sm:w-80 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-    value={q}
-    onChange={(e) => setQ(e.target.value)}
-  />
-  <select
-    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-    value={estadoFilter}
-    onChange={(e) => setEstadoFilter(e.target.value)}
-  >
-    <option>Todos</option>
-    {ESTADOS.map((s) => (
-      <option key={s}>{s}</option>
-    ))}
-  </select>
-  <button
-    onClick={() => { setQ(""); setEstadoFilter("Todos"); }}
-    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50"
-  >
-    Limpiar
-  </button>
-</div>
-
-          <div className="overflow-x-auto">
-<table className="min-w-full text-sm">
-  <thead>
-    <tr className="text-left text-gray-500">
-      <th className="py-2 pr-4">Nombre</th>
-      <th className="py-2 pr-4">Documento</th>
-      <th className="py-2 pr-4">Teléfono</th>
-      <th className="py-2 pr-4">Estado</th>
-      <th className="py-2 pr-4">CV</th>
-      <th className="py-2 pr-4">Acciones</th>
-    </tr>
-  </thead>
-  <tbody className="divide-y divide-gray-100">
-    {rows.map((a) => (
-      <tr key={a.id} className="hover:bg-gray-50/60">
-        <td className="py-2 pr-4">{a.nombre}</td>
-        <td className="py-2 pr-4">{a.documento}</td>
-        <td className="py-2 pr-4">{a.telefono || "-"}</td>
-        <td className="py-2 pr-4">
-          <select
-            className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs"
-            value={a.estado || "Pendiente"}
-            onChange={(e) => updateEstado(a.id, e.target.value)}
-          >
-            {ESTADOS.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <Badge color={estadoColor(a.estado)} className="ml-2">{a.estado || "Pendiente"}</Badge>
-        </td>
-        <td className="py-2 pr-4">
-          {a.cv_url ? (
-            <a
-              href={a.cv_url}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-100"
+          <div className="mb-3 flex flex-wrap gap-3 items-center">
+            <input
+              placeholder="Buscar por nombre, documento o teléfono…"
+              className="border rounded-md px-3 py-2 w-full sm:w-80"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+            <select
+              className="border rounded-md px-3 py-2"
+              value={estadoFilter}
+              onChange={(e) => setEstadoFilter(e.target.value)}
             >
-              Ver PDF
-            </a>
-          ) : <span className="text-gray-400">—</span>}
-        </td>
-        <td className="py-2 pr-4">
-          <div className="flex items-center gap-3">
+              <option>Todos</option>
+              {ESTADOS.map((s) => (
+                <option key={s}>{s}</option>
+              ))}
+            </select>
             <button
-              onClick={() => setForm({
-                nombre: a.nombre, documento: a.documento, telefono: a.telefono,
-                edad: a.edad ?? "", experiencia: a.experiencia ?? "",
-                ingresos: a.ingresos ?? "", estado: a.estado ?? "Pendiente"
-              })}
-              className="text-indigo-700 hover:underline"
+              onClick={() => {
+                setQ("");
+                setEstadoFilter("Todos");
+              }}
+              className="text-sm px-3 py-2 border rounded-md bg-white hover:bg-gray-50"
             >
-              Editar
-            </button>
-            <button onClick={() => remove(a.id)} className="text-rose-600 hover:underline">
-              Eliminar
+              Limpiar
             </button>
           </div>
-        </td>
-      </tr>
-    ))}
-    {rows.length === 0 && (
-      <tr>
-        <td colSpan={6} className="py-6 text-center text-gray-500">Sin registros</td>
-      </tr>
-    )}
-  </tbody>
-</table>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="text-left text-gray-500">
+                  <th className="py-2 pr-4">Nombre</th>
+                  <th className="py-2 pr-4">Documento</th>
+                  <th className="py-2 pr-4">Teléfono</th>
+                  <th className="py-2 pr-4">Estado</th>
+                  <th className="py-2 pr-4">CV</th>
+                  <th className="py-2 pr-4">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {rows.map((a) => (
+                  <tr key={a.id}>
+                    <td className="py-2 pr-4">{a.nombre}</td>
+                    <td className="py-2 pr-4">{a.documento}</td>
+                    <td className="py-2 pr-4">{a.telefono || "-"}</td>
+                    <td className="py-2 pr-4">
+                      <select
+                        className="border rounded-md px-2 py-1 text-xs"
+                        value={a.estado || "Pendiente"}
+                        onChange={(e) => updateEstado(a.id, e.target.value)}
+                      >
+                        {ESTADOS.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                      <Badge color={estadoColor(a.estado)} className="ml-2">
+                        {a.estado || "Pendiente"}
+                      </Badge>
+                    </td>
+                    <td className="py-2 pr-4">
+                      {a.cv_url ? (
+                        <a
+                          href={a.cv_url}
+                          className="text-brand-700 hover:underline"
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Ver PDF
+                        </a>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="py-2 pr-4">
+                      <button onClick={() => remove(a.id)} className="text-red-600 hover:underline">
+                        Eliminar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {rows.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="py-6 text-center text-gray-500">
+                      Sin registros
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </Card>
       </div>

@@ -5,8 +5,8 @@ import Badge from "../../components/Badge";
 import Progress from "../../components/Progress";
 import { supabase } from "../../lib/supabase";
 import { useEffect, useMemo, useState } from "react";
+import { estadoColor } from "../../lib/ui";
 
-/** Tipos **/
 type Vacante = {
   id: number;
   cargo: string;
@@ -15,8 +15,8 @@ type Vacante = {
   descripcion: string;
   requisitos: string | null;
   contacto: string;
-  fecha_inicio: string | null; // ISO yyyy-mm-dd
-  fecha_fin: string | null; // ISO yyyy-mm-dd
+  fecha_inicio: string | null;
+  fecha_fin: string | null;
   created_at: string;
 };
 
@@ -32,10 +32,19 @@ type Aspirante = {
   cv_url: string | null;
 };
 
-/** Componente principal **/
+type VacanteForm = {
+  cargo: string;
+  empresa: string;
+  salario: string | number;
+  descripcion: string;
+  requisitos: string;
+  contacto: string;
+  fecha_inicio: string;
+  fecha_fin: string;
+};
+
 export default function Vacantes() {
-  /** Formulario de creación/edición */
-  const empty = {
+  const empty: VacanteForm = {
     cargo: "",
     empresa: "",
     salario: "",
@@ -45,36 +54,32 @@ export default function Vacantes() {
     fecha_inicio: "",
     fecha_fin: "",
   };
-  const [form, setForm] = useState<any>(empty);
+
+  const [form, setForm] = useState<VacanteForm>(empty);
+  const [list, setList] = useState<Vacante[]>([]);
   const [saving, setSaving] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
 
-  /** Lista de vacantes */
-  const [list, setList] = useState<Vacante[]>([]);
-
-  /** UI de matching */
+  // matching UI
   const [matchOpenFor, setMatchOpenFor] = useState<number | null>(null);
   const [matches, setMatches] = useState<Array<{ asp: Aspirante; score: number }>>([]);
-
   const selectedVacante = useMemo(
     () => list.find((v) => v.id === matchOpenFor) || null,
     [matchOpenFor, list]
   );
 
-  /** Carga de vacantes */
   const load = async () => {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("vacantes")
       .select("*")
       .order("created_at", { ascending: false });
-    if (!error) setList((data || []) as Vacante[]);
+    setList((data || []) as Vacante[]);
   };
 
   useEffect(() => {
     load();
   }, []);
 
-  /** Validaciones básicas */
   const validate = () => {
     if (!form.cargo?.trim()) return "El cargo es obligatorio";
     if (!form.descripcion?.trim()) return "La descripción es obligatoria";
@@ -84,13 +89,12 @@ export default function Vacantes() {
     return null;
   };
 
-  /** Crear / Editar */
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     const err = validate();
     if (err) return alert(err);
-
     setSaving(true);
+
     const payload = {
       cargo: form.cargo,
       empresa: form.empresa || null,
@@ -113,14 +117,14 @@ export default function Vacantes() {
       setForm(empty);
       setEditId(null);
       await load();
-    } catch (e: any) {
-      alert(e?.message || e);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      alert(msg);
     } finally {
       setSaving(false);
     }
   };
 
-  /** Comenzar edición */
   const startEdit = (v: Vacante) => {
     setForm({
       cargo: v.cargo || "",
@@ -136,17 +140,14 @@ export default function Vacantes() {
     setMatchOpenFor(null);
   };
 
-  /** Eliminar */
   const remove = async (id: number) => {
     if (!confirm("¿Eliminar esta vacante?")) return;
-    const { error } = await supabase.from("vacantes").delete().eq("id", id);
-    if (error) return alert(error.message);
+    await supabase.from("vacantes").delete().eq("id", id);
     await load();
   };
 
-  // ------------------ MATCHING (afinidad) ------------------
+  // --- MATCHING --------------------------------------------------------------
 
-  // Normaliza (minúsculas, sin tildes, solo [a-z0-9 y espacios])
   const norm = (s: string) =>
     (s || "")
       .toLowerCase()
@@ -156,19 +157,11 @@ export default function Vacantes() {
       .replace(/\s+/g, " ")
       .trim();
 
-  // Tokeniza y filtra palabras muy cortas
   const tokenize = (s: string) =>
     norm(s)
       .split(" ")
-      .filter((w) => w.length > 2);
+      .filter((w) => w && w.length > 2);
 
-  /**
-   * Score rápido de afinidad:
-   *   - tokens de cargo + descripcion + requisitos
-   *   - tokens de experiencia + nombre del aspirante
-   *   - score = #hits / #tokensVacante
-   *   - bonus: si salario ofertado >= ingresos del aspirante (+0.05)
-   */
   const scoreAspirante = (v: Vacante, a: Aspirante) => {
     const vacTokens = new Set([
       ...tokenize(v.cargo || ""),
@@ -176,55 +169,51 @@ export default function Vacantes() {
       ...tokenize(v.requisitos || ""),
     ]);
 
-    const aspTokens = new Set(tokenize([a.experiencia || "", a.nombre || ""].join(" ")));
+    const aspText = [a.experiencia || "", a.nombre || ""].join(" ");
+    const aspTokens = new Set(tokenize(aspText));
 
     let hits = 0;
     vacTokens.forEach((t) => {
       if (aspTokens.has(t)) hits++;
     });
 
-    const base = vacTokens.size ? hits / vacTokens.size : 0;
+    const base = vacTokens.size > 0 ? hits / vacTokens.size : 0;
+
     let bonus = 0;
-    if (v.salario != null && a.ingresos != null && v.salario >= a.ingresos) bonus += 0.05;
+    if (v.salario && a.ingresos != null && v.salario >= a.ingresos) bonus += 0.05;
 
     return Math.max(0, Math.min(1, base + bonus));
   };
 
-  /** Sugiere aspirantes para una vacante */
   const sugerirAspirantes = async (vac: Vacante) => {
     const { data, error } = await supabase.from("aspirantes").select("*");
-    if (error) return alert("No se pudo cargar aspirantes: " + error.message);
-
+    if (error) {
+      alert("No se pudo cargar aspirantes: " + error.message);
+      return;
+    }
     const arr = (data || []) as Aspirante[];
     const ranked = arr
       .map((asp) => ({ asp, score: scoreAspirante(vac, asp) }))
       .sort((a, b) => b.score - a.score)
       .slice(0, 15);
-
     setMatches(ranked);
     setMatchOpenFor(vac.id);
   };
 
-  /** Marcar aspirante en revisión */
   const marcarRevision = async (idAspirante: number) => {
-    const { error } = await supabase
-      .from("aspirantes")
-      .update({ estado: "En revisión" })
-      .eq("id", idAspirante);
-    if (error) return alert("No se pudo actualizar: " + error.message);
-
-    // Feedback inmediato en la lista de matches
+    const { error } = await supabase.from("aspirantes").update({ estado: "En revisión" }).eq("id", idAspirante);
+    if (error) return alert("No se pudo actualizar el aspirante: " + error.message);
     setMatches((m) =>
       m.map((x) => (x.asp.id === idAspirante ? { ...x, asp: { ...x.asp, estado: "En revisión" } } : x))
     );
   };
 
-  // --------------------------------------------------------
+  // --------------------------------------------------------------------------
 
   return (
     <LayoutAdmin title="Vacantes">
-<div className="grid lg:grid-cols-2 gap-4 max-w-[1200px]">
-        {/* FORMULARIO */}
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* FORM */}
         <Card title={editId ? "Editar vacante" : "Nueva vacante"}>
           <form onSubmit={save} className="grid sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
@@ -326,10 +315,10 @@ export default function Vacantes() {
           </form>
         </Card>
 
-        {/* LISTA DE VACANTES */}
+        {/* LISTA */}
         <Card title="Vacantes publicadas">
           <div className="overflow-x-auto">
-            <table className="min-w-full text-[13px]">
+            <table className="min-w-full text-sm">
               <thead>
                 <tr className="text-left text-gray-500">
                   <th className="py-2 pr-4">Cargo</th>
@@ -341,41 +330,25 @@ export default function Vacantes() {
               </thead>
               <tbody className="divide-y">
                 {list.map((v) => {
-                  const vigencia =
-                    (v.fecha_inicio || "") + (v.fecha_fin ? ` → ${v.fecha_fin}` : "");
+                  const vigencia = (v.fecha_inicio || "") + (v.fecha_fin ? ` → ${v.fecha_fin}` : "");
                   return (
                     <tr key={v.id}>
                       <td className="py-2 pr-4">
                         <div className="font-medium">{v.cargo}</div>
                       </td>
                       <td className="py-2 pr-4">{v.empresa || "-"}</td>
+                      <td className="py-2 pr-4">{v.salario != null ? v.salario.toLocaleString() : "-"}</td>
                       <td className="py-2 pr-4">
-                        {v.salario != null ? v.salario.toLocaleString() : "-"}
-                      </td>
-                      <td className="py-2 pr-4">
-                        {vigencia ? (
-                          <Badge color="blue">{vigencia}</Badge>
-                        ) : (
-                          <span className="text-gray-400">—</span>
-                        )}
+                        {vigencia ? <Badge color="blue">{vigencia}</Badge> : <span className="text-gray-400">—</span>}
                       </td>
                       <td className="py-2 pr-4 whitespace-nowrap">
-                        <button
-                          className="text-indigo-700 hover:underline mr-3"
-                          onClick={() => startEdit(v)}
-                        >
+                        <button className="text-indigo-700 hover:underline mr-3" onClick={() => startEdit(v)}>
                           Editar
                         </button>
-                        <button
-                          className="text-red-600 hover:underline mr-3"
-                          onClick={() => remove(v.id)}
-                        >
+                        <button className="text-red-600 hover:underline mr-3" onClick={() => remove(v.id)}>
                           Eliminar
                         </button>
-                        <button
-                          className="text-brand-700 hover:underline"
-                          onClick={() => sugerirAspirantes(v)}
-                        >
+                        <button className="text-brand-700 hover:underline" onClick={() => sugerirAspirantes(v)}>
                           Sugerir aspirantes
                         </button>
                       </td>
@@ -393,18 +366,14 @@ export default function Vacantes() {
             </table>
           </div>
 
-          {/* PANEL DE MATCHES */}
+          {/* PANEL DE MATCHING */}
           {selectedVacante && (
             <div className="mt-6 border rounded-xl p-4 bg-gray-50">
               <div className="flex items-center justify-between">
                 <h3 className="text-base font-semibold">
-                  Aspirantes sugeridos para:{" "}
-                  <span className="text-brand-700">{selectedVacante.cargo}</span>
+                  Aspirantes sugeridos para: <span className="text-brand-700">{selectedVacante.cargo}</span>
                 </h3>
-                <button
-                  className="text-sm text-gray-600 hover:underline"
-                  onClick={() => setMatchOpenFor(null)}
-                >
+                <button className="text-sm text-gray-600 hover:underline" onClick={() => setMatchOpenFor(null)}>
                   Cerrar
                 </button>
               </div>
@@ -432,9 +401,7 @@ export default function Vacantes() {
                         </td>
                         <td className="py-2 pr-4">{asp.telefono || "-"}</td>
                         <td className="py-2 pr-4">
-                          <Badge color={asp.estado === "En revisión" ? "amber" : "gray"}>
-                            {asp.estado || "Pendiente"}
-                          </Badge>
+                          <Badge color={estadoColor(asp.estado)}>{asp.estado || "Pendiente"}</Badge>
                         </td>
                         <td className="py-2 pr-4">
                           <div className="flex items-center gap-2 w-44">
@@ -446,12 +413,7 @@ export default function Vacantes() {
                         </td>
                         <td className="py-2 pr-4">
                           {asp.cv_url ? (
-                            <a
-                              href={asp.cv_url}
-                              className="text-brand-700 hover:underline"
-                              target="_blank"
-                              rel="noreferrer"
-                            >
+                            <a href={asp.cv_url} className="text-brand-700 hover:underline" target="_blank" rel="noreferrer">
                               Ver PDF
                             </a>
                           ) : (
@@ -459,15 +421,13 @@ export default function Vacantes() {
                           )}
                         </td>
                         <td className="py-2 pr-4">
-                          <button
-                            className="text-brand-700 hover:underline"
-                            onClick={() => marcarRevision(asp.id)}
-                          >
+                          <button className="text-brand-700 hover:underline" onClick={() => marcarRevision(asp.id)}>
                             Marcar “En revisión”
                           </button>
                         </td>
                       </tr>
                     ))}
+
                     {matches.length === 0 && (
                       <tr>
                         <td colSpan={6} className="py-6 text-center text-gray-500">

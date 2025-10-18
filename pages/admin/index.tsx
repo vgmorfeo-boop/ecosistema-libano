@@ -4,6 +4,7 @@ import StatCard from "../../components/StatCard";
 import QuickAction from "../../components/QuickAction";
 import { supabase } from "../../lib/supabase";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 type A = { id: number; nombre: string; created_at: string };
 type V = { id: number; cargo: string; empresa: string | null; created_at: string };
@@ -24,9 +25,21 @@ export default function Panel() {
         supabase.from("vacantes").select("*", { count: "exact", head: true }),
         supabase.from("arriendos").select("*", { count: "exact", head: true }),
 
-        supabase.from("aspirantes").select("id,nombre,created_at").order("created_at", { ascending: false }).limit(5),
-        supabase.from("vacantes").select("id,cargo,empresa,created_at").order("created_at", { ascending: false }).limit(5),
-        supabase.from("arriendos").select("id,ubicacion,precio,created_at").order("created_at", { ascending: false }).limit(5),
+        supabase
+          .from("aspirantes")
+          .select("id,nombre,created_at")
+          .order("created_at", { ascending: false })
+          .limit(5),
+        supabase
+          .from("vacantes")
+          .select("id,cargo,empresa,created_at")
+          .order("created_at", { ascending: false })
+          .limit(5),
+        supabase
+          .from("arriendos")
+          .select("id,ubicacion,precio,created_at")
+          .order("created_at", { ascending: false })
+          .limit(5),
       ]);
 
       setStats({
@@ -51,9 +64,14 @@ export default function Panel() {
       </div>
 
       {/* Acciones rápidas */}
-      <Card title="Acciones rápidas" actions={
-        <a href="/admin/finanzas" className="text-sm text-brand-700 hover:underline">Ver finanzas</a>
-      }>
+      <Card
+        title="Acciones rápidas"
+        actions={
+          <Link href="/admin/finanzas" className="text-sm text-brand-700 hover:underline">
+            Ver finanzas
+          </Link>
+        }
+      >
         <div className="flex flex-wrap gap-3">
           <QuickAction href="/admin/aspirantes">+ Nuevo aspirante</QuickAction>
           <QuickAction href="/admin/vacantes">+ Nueva vacante</QuickAction>
@@ -64,12 +82,16 @@ export default function Panel() {
       {/* Listas recientes */}
       <div className="grid gap-6 lg:grid-cols-3">
         <Card title="Aspirantes recientes">
-          {loading ? <div className="text-sm text-gray-500">Cargando…</div> : (
+          {loading ? (
+            <div className="text-sm text-gray-500">Cargando…</div>
+          ) : (
             <ul className="divide-y">
-              {aspRec.map(a => (
+              {aspRec.map((a) => (
                 <li key={a.id} className="py-2 text-sm flex items-center justify-between">
                   <span className="truncate">{a.nombre}</span>
-                  <a className="text-brand-700 hover:underline text-xs" href="/admin/aspirantes">ver</a>
+                  <Link href="/admin/aspirantes" className="text-brand-700 hover:underline text-xs">
+                    ver
+                  </Link>
                 </li>
               ))}
               {aspRec.length === 0 && <li className="py-2 text-sm text-gray-500">Sin registros</li>}
@@ -78,12 +100,18 @@ export default function Panel() {
         </Card>
 
         <Card title="Vacantes recientes">
-          {loading ? <div className="text-sm text-gray-500">Cargando…</div> : (
+          {loading ? (
+            <div className="text-sm text-gray-500">Cargando…</div>
+          ) : (
             <ul className="divide-y">
-              {vacRec.map(v => (
+              {vacRec.map((v) => (
                 <li key={v.id} className="py-2 text-sm flex items-center justify-between">
-                  <span className="truncate">{v.cargo} {v.empresa ? `— ${v.empresa}` : ""}</span>
-                  <a className="text-brand-700 hover:underline text-xs" href="/admin/vacantes">ver</a>
+                  <span className="truncate">
+                    {v.cargo} {v.empresa ? `— ${v.empresa}` : ""}
+                  </span>
+                  <Link href="/admin/vacantes" className="text-brand-700 hover:underline text-xs">
+                    ver
+                  </Link>
                 </li>
               ))}
               {vacRec.length === 0 && <li className="py-2 text-sm text-gray-500">Sin registros</li>}
@@ -92,12 +120,16 @@ export default function Panel() {
         </Card>
 
         <Card title="Arriendos recientes">
-          {loading ? <div className="text-sm text-gray-500">Cargando…</div> : (
+          {loading ? (
+            <div className="text-sm text-gray-500">Cargando…</div>
+          ) : (
             <ul className="divide-y">
-              {arrRec.map(r => (
+              {arrRec.map((r) => (
                 <li key={r.id} className="py-2 text-sm flex items-center justify-between">
                   <span className="truncate">{r.ubicacion}</span>
-                  <span className="text-xs text-gray-500">{r.precio ? `${r.precio.toLocaleString()} COP` : "-"}</span>
+                  <span className="text-xs text-gray-500">
+                    {r.precio ? `${r.precio.toLocaleString()} COP` : "-"}
+                  </span>
                 </li>
               ))}
               {arrRec.length === 0 && <li className="py-2 text-sm text-gray-500">Sin registros</li>}

@@ -3,6 +3,7 @@ import Card from "../../components/Card";
 import Button from "../../components/Button";
 import { supabase } from "../../lib/supabase";
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 
 type Arriendo = {
   id: number;
@@ -11,21 +12,28 @@ type Arriendo = {
   tipo: string;
   contacto: string;
   notas: string | null;
-  imagenes: string[];   // URLs públicas
+  imagenes: string[];
   created_at: string;
+};
+
+type ArriendoForm = {
+  ubicacion: string;
+  precio: string | number;
+  tipo: string;
+  contacto: string;
+  notas: string;
 };
 
 const BUCKET = "arriendos";
 
 // Extrae el path interno del bucket desde una URL pública de Supabase
 const publicUrlToPath = (url: string) => {
-  // https://xyz.supabase.co/storage/v1/object/public/arriendos/<path>
   const i = url.indexOf(`${BUCKET}/`);
   return i >= 0 ? url.slice(i + BUCKET.length + 1) : url;
 };
 
 export default function Arriendos() {
-  const empty = {
+  const empty: ArriendoForm = {
     ubicacion: "",
     precio: "",
     tipo: "",
@@ -33,11 +41,11 @@ export default function Arriendos() {
     notas: "",
   };
 
-  const [form, setForm] = useState<any>(empty);
+  const [form, setForm] = useState<ArriendoForm>(empty);
   const [list, setList] = useState<Arriendo[]>([]);
   const [saving, setSaving] = useState(false);
 
-  // Crear: fotos nuevas (previews en el form)
+  // fotos a subir (crear/editar)
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
 
@@ -46,10 +54,8 @@ export default function Arriendos() {
 
   // Galería modal
   const [galleryId, setGalleryId] = useState<number | null>(null);
-  const galleryItem = useMemo(
-    () => list.find((x) => x.id === galleryId) || null,
-    [galleryId, list]
-  );
+  const galleryItem = useMemo(() => list.find((x) => x.id === galleryId) || null, [galleryId, list]);
+
   // Agregar fotos desde modal
   const [galleryFiles, setGalleryFiles] = useState<File[]>([]);
   const [galleryUploading, setGalleryUploading] = useState(false);
@@ -68,16 +74,14 @@ export default function Arriendos() {
 
   // ---------------- Subidas ----------------
 
-  const uploadMany = async (files: File[]): Promise<string[]> => {
-    if (!files || files.length === 0) return [];
+  const uploadMany = async (fs: File[]): Promise<string[]> => {
+    if (!fs || fs.length === 0) return [];
     setUploading(true);
     const urls: string[] = [];
     try {
-      for (const f of files) {
+      for (const f of fs) {
         const safe = f.name.replace(/\s+/g, "_");
-        const path = `listing/${Date.now()}_${Math.random()
-          .toString(36)
-          .slice(2)}_${safe}`;
+        const path = `listing/${Date.now()}_${Math.random().toString(36).slice(2)}_${safe}`;
         const up = await supabase.storage.from(BUCKET).upload(path, f, {
           cacheControl: "3600",
           upsert: false,
@@ -93,16 +97,14 @@ export default function Arriendos() {
     }
   };
 
-  const uploadManyInGallery = async (files: File[]): Promise<string[]> => {
-    if (!files || files.length === 0) return [];
+  const uploadManyInGallery = async (fs: File[]): Promise<string[]> => {
+    if (!fs || fs.length === 0) return [];
     setGalleryUploading(true);
     const urls: string[] = [];
     try {
-      for (const f of files) {
+      for (const f of fs) {
         const safe = f.name.replace(/\s+/g, "_");
-        const path = `listing/${Date.now()}_${Math.random()
-          .toString(36)
-          .slice(2)}_${safe}`;
+        const path = `listing/${Date.now()}_${Math.random().toString(36).slice(2)}_${safe}`;
         const up = await supabase.storage.from(BUCKET).upload(path, f, {
           cacheControl: "3600",
           upsert: false,
@@ -134,17 +136,13 @@ export default function Arriendos() {
         tipo: form.tipo || "",
         contacto: form.contacto || "",
         notas: form.notas || null,
-        // en edición se conservan fotos anteriores
         imagenes: editId
           ? [...(list.find((x) => x.id === editId)?.imagenes || []), ...imagenes]
           : imagenes,
       };
 
       if (editId) {
-        const { error } = await supabase
-          .from("arriendos")
-          .update(payload)
-          .eq("id", editId);
+        const { error } = await supabase.from("arriendos").update(payload).eq("id", editId);
         if (error) throw error;
       } else {
         const { error } = await supabase.from("arriendos").insert(payload);
@@ -155,8 +153,9 @@ export default function Arriendos() {
       setFiles([]);
       setEditId(null);
       await load();
-    } catch (err: any) {
-      alert("No se pudo guardar: " + (err.message || err));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      alert("No se pudo guardar: " + msg);
     } finally {
       setSaving(false);
     }
@@ -185,7 +184,6 @@ export default function Arriendos() {
 
   const removeFromBucket = async (urls: string[]) => {
     if (!urls?.length) return;
-    // Convertimos a paths internos
     const paths = urls.map(publicUrlToPath);
     await supabase.storage.from(BUCKET).remove(paths);
   };
@@ -195,15 +193,12 @@ export default function Arriendos() {
     if (!target) return;
     if (!confirm("¿Eliminar arriendo y todas sus fotos?")) return;
 
-    // 1) eliminar las fotos del bucket (opcional, pero recomendado)
     try {
       await removeFromBucket(target.imagenes || []);
     } catch (e) {
-      // si falla, igual intentamos borrar el registro
       console.warn("No se pudieron eliminar algunas fotos:", e);
     }
 
-    // 2) eliminar el registro
     const { error } = await supabase.from("arriendos").delete().eq("id", id);
     if (error) {
       alert("No se pudo eliminar: " + error.message);
@@ -229,15 +224,13 @@ export default function Arriendos() {
     try {
       const urls = await uploadManyInGallery(galleryFiles);
       const updated = [...(galleryItem.imagenes || []), ...urls];
-      const { error } = await supabase
-        .from("arriendos")
-        .update({ imagenes: updated })
-        .eq("id", galleryItem.id);
+      const { error } = await supabase.from("arriendos").update({ imagenes: updated }).eq("id", galleryItem.id);
       if (error) throw error;
       setGalleryFiles([]);
       await load();
-    } catch (e: any) {
-      alert("No se pudo agregar fotos: " + (e.message || e));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      alert("No se pudo agregar fotos: " + msg);
     }
   };
 
@@ -245,19 +238,14 @@ export default function Arriendos() {
     if (!galleryItem) return;
     if (!confirm("¿Eliminar esta foto?")) return;
 
-    // 1) borrar del bucket
     try {
       await supabase.storage.from(BUCKET).remove([publicUrlToPath(url)]);
     } catch (e) {
       console.warn("No se pudo eliminar del bucket:", e);
     }
 
-    // 2) actualizar arreglo en DB
     const remaining = (galleryItem.imagenes || []).filter((u) => u !== url);
-    const { error } = await supabase
-      .from("arriendos")
-      .update({ imagenes: remaining })
-      .eq("id", galleryItem.id);
+    const { error } = await supabase.from("arriendos").update({ imagenes: remaining }).eq("id", galleryItem.id);
     if (error) {
       alert("No se pudo actualizar el arriendo: " + error.message);
       return;
@@ -265,12 +253,11 @@ export default function Arriendos() {
     await load();
   };
 
-  // Previews del form crear/editar
   const previews = files.map((f) => URL.createObjectURL(f));
 
   return (
     <LayoutAdmin title="Arriendos">
-<div className="grid lg:grid-cols-2 gap-4 max-w-[1200px]">
+      <div className="grid lg:grid-cols-2 gap-6">
         {/* FORM */}
         <Card title={editId ? "Editar arriendo" : "Nuevo arriendo"}>
           <form onSubmit={save} className="grid sm:grid-cols-2 gap-4">
@@ -341,18 +328,18 @@ export default function Arriendos() {
                 <div className="mt-3 grid grid-cols-3 sm:grid-cols-4 gap-3">
                   {previews.map((src, i) => (
                     <div key={i} className="relative">
-                      <img
+                      <Image
                         src={src}
-                        className="w-full h-28 object-cover rounded-lg border"
                         alt={`foto-${i}`}
+                        width={320}
+                        height={180}
+                        className="w-full h-28 object-cover rounded-lg border"
                       />
                     </div>
                   ))}
                 </div>
               )}
-              {(uploading || saving) && (
-                <p className="mt-2 text-sm text-gray-500">Procesando…</p>
-              )}
+              {(uploading || saving) && <p className="mt-2 text-sm text-gray-500">Procesando…</p>}
             </div>
 
             <div className="sm:col-span-2 flex items-center gap-2">
@@ -391,9 +378,11 @@ export default function Arriendos() {
                   <tr key={a.id}>
                     <td className="py-2 pr-4">
                       {a.imagenes?.length ? (
-                        <img
+                        <Image
                           src={a.imagenes[0]}
                           alt="miniatura"
+                          width={64}
+                          height={64}
                           className="w-16 h-16 object-cover rounded-md border"
                         />
                       ) : (
@@ -401,28 +390,17 @@ export default function Arriendos() {
                       )}
                     </td>
                     <td className="py-2 pr-4">{a.ubicacion}</td>
-                    <td className="py-2 pr-4">
-                      {a.precio ? a.precio.toLocaleString() : "-"}
-                    </td>
+                    <td className="py-2 pr-4">{a.precio ? a.precio.toLocaleString() : "-"}</td>
                     <td className="py-2 pr-4">{a.tipo || "-"}</td>
                     <td className="py-2 pr-4">{a.contacto || "-"}</td>
                     <td className="py-2 pr-4 whitespace-nowrap flex gap-3">
-                      <button
-                        onClick={() => openGallery(a.id)}
-                        className="text-indigo-700 hover:underline"
-                      >
+                      <button onClick={() => openGallery(a.id)} className="text-indigo-700 hover:underline">
                         Ver galería
                       </button>
-                      <button
-                        onClick={() => startEdit(a)}
-                        className="text-brand-700 hover:underline"
-                      >
+                      <button onClick={() => startEdit(a)} className="text-brand-700 hover:underline">
                         Editar
                       </button>
-                      <button
-                        onClick={() => remove(a.id)}
-                        className="text-red-600 hover:underline"
-                      >
+                      <button onClick={() => remove(a.id)} className="text-red-600 hover:underline">
                         Eliminar
                       </button>
                     </td>
@@ -444,21 +422,14 @@ export default function Arriendos() {
       {/* MODAL GALERÍA */}
       {galleryItem && (
         <div className="fixed inset-0 z-40">
-          <div
-            className="absolute inset-0 bg-black/40"
-            onClick={closeGallery}
-          />
+          <div className="absolute inset-0 bg-black/40" onClick={closeGallery} />
           <div className="absolute inset-0 grid place-items-center p-4">
             <div className="w-full max-w-5xl bg-white rounded-2xl shadow-xl p-5">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-lg font-semibold">
                   Galería — <span className="text-gray-600">{galleryItem.ubicacion}</span>
                 </h3>
-                <button
-                  onClick={closeGallery}
-                  className="text-gray-500 hover:text-gray-800"
-                  title="Cerrar"
-                >
+                <button onClick={closeGallery} className="text-gray-500 hover:text-gray-800" title="Cerrar">
                   ✕
                 </button>
               </div>
@@ -468,10 +439,12 @@ export default function Arriendos() {
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                   {galleryItem.imagenes.map((url) => (
                     <div key={url} className="relative group">
-                      <img
+                      <Image
                         src={url}
-                        className="w-full h-40 object-cover rounded-lg border"
                         alt="foto"
+                        width={400}
+                        height={240}
+                        className="w-full h-40 object-cover rounded-lg border"
                       />
                       <button
                         onClick={() => removePhotoFromGallery(url)}
@@ -495,23 +468,15 @@ export default function Arriendos() {
                     type="file"
                     accept="image/*"
                     multiple
-                    onChange={(e) =>
-                      setGalleryFiles(Array.from(e.target.files || []).slice(0, 15))
-                    }
+                    onChange={(e) => setGalleryFiles(Array.from(e.target.files || []).slice(0, 15))}
                     className="border rounded-md px-3 py-2"
                   />
-                  <Button
-                    type="button"
-                    disabled={galleryUploading || galleryFiles.length === 0}
-                    onClick={addPhotosToGallery}
-                  >
+                  <Button type="button" disabled={galleryUploading || galleryFiles.length === 0} onClick={addPhotosToGallery}>
                     {galleryUploading ? "Subiendo…" : "Añadir"}
                   </Button>
                 </div>
                 {galleryFiles.length > 0 && (
-                  <p className="text-xs text-gray-500 mt-1">
-                    {galleryFiles.length} archivo(s) seleccionados.
-                  </p>
+                  <p className="text-xs text-gray-500 mt-1">{galleryFiles.length} archivo(s) seleccionados.</p>
                 )}
               </div>
             </div>

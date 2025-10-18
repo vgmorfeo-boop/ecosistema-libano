@@ -1,26 +1,23 @@
-import clsx from "clsx";
+// components/QuickAction.tsx
+import Link from "next/link";
+import { ReactNode } from "react";
 
-export default function QuickAction({
-  children,
-  href,
-  onClick,
-}: {
-  children: React.ReactNode;
-  href?: string;
-  onClick?: () => void;
-}) {
-  const base =
-    "inline-flex items-center justify-center px-4 py-2 rounded-md text-sm border bg-white hover:bg-gray-50 shadow-sm";
-  if (href) {
-    return (
-      <a href={href} className={clsx(base, "focus:outline-none focus:ring-2 focus:ring-brand-400")}>
-        {children}
-      </a>
-    );
-  }
+type Props = {
+  href: string;
+  children: ReactNode;
+  className?: string;
+};
+
+export default function QuickAction({ href, children, className }: Props) {
   return (
-    <button onClick={onClick} className={base}>
+    <Link
+      href={href}
+      className={
+        className ??
+        "inline-block px-3 py-2 rounded-md bg-brand-600 hover:bg-brand-700 text-white text-sm shadow-sm"
+      }
+    >
       {children}
-    </button>
+    </Link>
   );
 }
